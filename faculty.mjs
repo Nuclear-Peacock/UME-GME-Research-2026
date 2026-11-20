@@ -1,4 +1,5 @@
 import { PATHWAYS } from './data/pathways.mjs';
+import { PROJECT_TRACKING_DEFAULTS, projectAvailability, signupLabel, spotsLabel } from './data/availability.mjs';
 
 const byId = id => document.getElementById(id);
 const login = byId('login');
@@ -40,8 +41,16 @@ async function api(resource, method = 'GET', data) {
   return result;
 }
 
-function renderProjects(projects) {
+function renderProjects(projects, submissions) {
+  const interestedByProject = new Map();
+  for (const submission of submissions) {
+    for (const {id} of submission.projects) {
+      if (!interestedByProject.has(id)) interestedByProject.set(id, new Set());
+      interestedByProject.get(id).add(submission.email.toLowerCase());
+    }
+  }
   byId('projects').replaceChildren(...projects.map(project => {
+    project = {...PROJECT_TRACKING_DEFAULTS, ...project};
     const entry = element('article', '');
     entry.className = 'entry';
     const checkbox = document.createElement('input');
@@ -72,7 +81,13 @@ function renderProjects(projects) {
     const actions = element('div', '');
     actions.className = 'actions';
     actions.append(label, edit);
-    entry.append(element('h3', project.title), actions);
+    const {signupStatus, remainingSpots} = projectAvailability(project);
+    const confirmed = project.capacity === null ? String(project.confirmedSpots) : project.confirmedSpots + ' / ' + project.capacity;
+    const interested = interestedByProject.get(project.id)?.size ?? 0;
+    const completion = project.completed ? 100 : project.completionPercent;
+    const summary = element('p', [signupLabel(signupStatus), spotsLabel(remainingSpots),
+      confirmed + ' confirmed', interested + ' interested', completion + '% complete'].join(' · '));
+    entry.append(element('h3', project.title), summary, actions);
     return entry;
   }));
 }
@@ -92,7 +107,7 @@ function renderInterests(submissions) {
 
 async function refresh() {
   const [projects, submissions] = await Promise.all([api('projects'), api('interests')]);
-  renderProjects(projects);
+  renderProjects(projects, submissions);
   renderInterests(submissions);
 }
 
@@ -130,9 +145,10 @@ function openEditor(project = null) {
   editing = project;
   byId('editorHeading').textContent = project ? 'Edit project' : 'New project';
   if (project) {
-    for (const name of ['title', 'hook', 'status', 'why', 'role', 'output', 'timeline', 'accentKey']) {
+    for (const name of ['title', 'hook', 'status', 'why', 'role', 'output', 'timeline', 'accentKey', 'capacity', 'confirmedSpots', 'completionPercent']) {
       editor.elements[name].value = project[name] ?? '';
     }
+    editor.elements.signupOpen.checked = project.signupOpen;
     for (const name of ['skills', 'badges']) editor.elements[name].value = project[name].join('\n');
     for (const checkbox of editor.querySelectorAll('[name=tags]')) checkbox.checked = project.tags.includes(checkbox.value);
   }
@@ -166,6 +182,13 @@ editor.addEventListener('submit', event => {
     const project = Object.fromEntries(fields);
     project.tags = fields.getAll('tags');
     for (const name of ['badges', 'skills']) project[name] = project[name].split('\n').map(line => line.trim()).filter(Boolean);
+    project.signupOpen = fields.has('signupOpen');
+    project.capacity = fields.get('capacity') === '' ? null : Number(fields.get('capacity'));
+    project.confirmedSpots = Number(fields.get('confirmedSpots'));
+    project.completionPercent = Number(fields.get('completionPercent'));
+    if (project.capacity !== null && project.confirmedSpots > project.capacity) {
+      throw new Error('Confirmed spots cannot exceed total spots.');
+    }
     project.completed = editing?.completed ?? false;
     if (editing) Object.assign(project, {id: editing.id, revision: editing.revision});
     await api('projects', editing ? 'PUT' : 'POST', project);

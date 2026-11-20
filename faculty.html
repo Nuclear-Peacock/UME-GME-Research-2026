@@ -35,6 +35,14 @@
           <label>Why it matters <textarea name="why" maxlength="3000" required></textarea>
           <label>What a student could do <textarea name="role" maxlength="3000" required></textarea>
           <label>Likely output <textarea name="output" maxlength="1500" required></textarea>
+          <fieldset class="tracking-fields">
+            <legend>Recruitment and progress</legend>
+            <label class="checkbox"><input name="signupOpen" type="checkbox" checked> Accept student interest</label>
+            <label>Total spots <input name="capacity" type="number" min="0" step="1" placeholder="No limit"></label>
+            <label>Confirmed spots <input name="confirmedSpots" type="number" min="0" step="1" value="0" required></label>
+            <label>Project completion (%) <input name="completionPercent" type="number" min="0" max="100" step="1" value="0" required></label>
+            <p>Record confirmed spots as you accept students. The learner site shows availability. Project progress is visible to faculty.</p>
+          </fieldset>
           <label>Timeline <input name="timeline" maxlength="500"></label>
           <label>Primary pathway <select name="accentKey" required></select></label>
           <fieldset id="pathways"><legend>Additional pathways</legend></fieldset>
