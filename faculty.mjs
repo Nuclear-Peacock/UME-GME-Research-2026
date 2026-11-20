@@ -6,9 +6,14 @@ const login = byId('login');
 const editor = byId('editor');
 const notice = byId('notice');
 const dashboard = byId('dashboard');
+const newProject = byId('newProject');
+const add = byId('add');
+const editorNotice = byId('editorNotice');
 let token = '';
 let editing = null;
 let busy = false;
+let editorTrigger = null;
+let initialDraft = '';
 
 function element(tag, value) {
   const node = document.createElement(tag);
@@ -49,46 +54,63 @@ function renderProjects(projects, submissions) {
       interestedByProject.get(id).add(submission.email.toLowerCase());
     }
   }
+  if (!projects.length) {
+    byId('projects').replaceChildren(element('p', 'No projects yet.'));
+    return;
+  }
   byId('projects').replaceChildren(...projects.map(project => {
     project = {...PROJECT_TRACKING_DEFAULTS, ...project};
-    const entry = element('article', '');
-    entry.className = 'entry';
-    const checkbox = document.createElement('input');
-    checkbox.type = 'checkbox';
-    checkbox.checked = project.completed;
-    const label = document.createElement('label');
-    label.append(checkbox, ' Completed');
-    checkbox.addEventListener('change', () => {
-      const completed = checkbox.checked;
-      if (busy) {
-        checkbox.checked = project.completed;
-        return;
-      }
-      run(async () => {
-        try {
-          await api('projects', 'PUT', {id: project.id, revision: project.revision, completed});
-        } catch (error) {
-          checkbox.checked = project.completed;
-          throw error;
-        }
-        notice.textContent = completed ? 'Project marked complete.' : 'Project reopened.';
-        await refresh();
-      });
-    });
-    const edit = element('button', 'Edit');
-    edit.className = 'btn';
-    edit.addEventListener('click', () => openEditor(project));
-    const actions = element('div', '');
-    actions.className = 'actions';
-    actions.append(label, edit);
+    const card = element('article', '');
+    card.className = 'faculty-project';
+    const toggle = element('button', '');
+    toggle.type = 'button';
+    toggle.id = 'edit-project-' + project.id;
+    toggle.className = 'card faculty-project-button';
+    toggle.setAttribute('aria-expanded', 'false');
+    toggle.setAttribute('aria-label', 'Edit ' + project.title);
+    toggle.addEventListener('click', () => openEditor(project, toggle, card));
+
     const {signupStatus, remainingSpots} = projectAvailability(project);
-    const confirmed = project.capacity === null ? String(project.confirmedSpots) : project.confirmedSpots + ' / ' + project.capacity;
+    const pathway = PATHWAYS.find(pathway => pathway.key === project.accentKey);
+    if (pathway) toggle.style.setProperty('--card-accent', 'var(' + pathway.accent + ')');
+
+    const status = element('span', signupLabel(signupStatus));
+    status.id = 'signup-' + project.id;
+    status.className = 'badge faculty-signup';
+    status.dataset.status = signupStatus;
+
+    const title = element('span', project.title);
+    title.className = 'faculty-project-title';
+    const hook = element('span', project.hook);
+    hook.className = 'hook';
+    const stage = element('span', project.status);
+    stage.className = 'faculty-stage';
+
+    const metrics = element('span', '');
+    metrics.id = 'metrics-' + project.id;
+    metrics.className = 'faculty-metrics';
+    const confirmed = project.capacity === null ? project.confirmedSpots : project.confirmedSpots + ' / ' + project.capacity;
     const interested = interestedByProject.get(project.id)?.size ?? 0;
+    metrics.append(element('span', spotsLabel(remainingSpots)), element('span', confirmed + ' confirmed'),
+      element('span', interested + ' interested'));
+
     const completion = project.completed ? 100 : project.completionPercent;
-    const summary = element('p', [signupLabel(signupStatus), spotsLabel(remainingSpots),
-      confirmed + ' confirmed', interested + ' interested', completion + '% complete'].join(' · '));
-    entry.append(element('h3', project.title), summary, actions);
-    return entry;
+    const progress = document.createElement('progress');
+    progress.max = 100;
+    progress.value = completion;
+    progress.setAttribute('aria-label', 'Project completion');
+    const progressSummary = element('span', '');
+    progressSummary.className = 'faculty-progress';
+    const completionLabel = element('span', completion + '% complete');
+    completionLabel.id = 'progress-' + project.id;
+    progressSummary.append(completionLabel, progress);
+    toggle.setAttribute('aria-describedby', [status.id, metrics.id, completionLabel.id].join(' '));
+
+    const action = element('span', 'Edit project →');
+    action.className = 'faculty-edit-label';
+    toggle.append(status, title, hook, stage, metrics, progressSummary, action);
+    card.append(toggle);
+    return card;
   }));
 }
 
@@ -111,14 +133,15 @@ async function refresh() {
   renderInterests(submissions);
 }
 
-async function run(action) {
+async function run(action, errorTarget = notice) {
   if (busy) return;
   busy = true;
   notice.textContent = '';
+  errorTarget.textContent = '';
   try {
     await action();
   } catch (error) {
-    notice.textContent = error.message;
+    (errorTarget === editorNotice && editor.hidden ? notice : errorTarget).textContent = error.message;
   } finally {
     busy = false;
   }
@@ -128,30 +151,57 @@ function signOut() {
   token = '';
   dashboard.hidden = true;
   login.hidden = false;
+  closeEditor();
   byId('projects').replaceChildren();
   byId('interests').replaceChildren();
-  closeEditor();
 }
 
-function closeEditor() {
+function draft() {
+  return JSON.stringify([...new FormData(editor)]);
+}
+
+function confirmSwitch() {
+  return editor.hidden || draft() === initialDraft || window.confirm('Discard unsaved project changes?');
+}
+
+function closeEditor(returnFocus = false) {
+  const trigger = editorTrigger;
+  trigger?.setAttribute('aria-expanded', 'false');
+  if (trigger !== add) trigger?.removeAttribute('aria-controls');
+  trigger?.closest('.faculty-project')?.classList.remove('is-editing');
+  editorTrigger = null;
   editing = null;
   editor.reset();
   editor.hidden = true;
+  editorNotice.textContent = '';
+  newProject.append(editor);
+  if (returnFocus) trigger?.focus();
 }
 
-function openEditor(project = null) {
-  if (busy) return;
+function openEditor(project, trigger, host) {
+  if (busy || !confirmSwitch()) return;
+  if (trigger === editorTrigger) {
+    closeEditor(true);
+    return;
+  }
   closeEditor();
   editing = project;
+  editorTrigger = trigger;
+  trigger.setAttribute('aria-expanded', 'true');
+  trigger.setAttribute('aria-controls', editor.id);
+  if (project) host.classList.add('is-editing');
+  host.append(editor);
   byId('editorHeading').textContent = project ? 'Edit project' : 'New project';
   if (project) {
     for (const name of ['title', 'hook', 'status', 'why', 'role', 'output', 'timeline', 'accentKey', 'capacity', 'confirmedSpots', 'completionPercent']) {
       editor.elements[name].value = project[name] ?? '';
     }
     editor.elements.signupOpen.checked = project.signupOpen;
+    editor.elements.completed.checked = project.completed;
     for (const name of ['skills', 'badges']) editor.elements[name].value = project[name].join('\n');
     for (const checkbox of editor.querySelectorAll('[name=tags]')) checkbox.checked = project.tags.includes(checkbox.value);
   }
+  initialDraft = draft();
   editor.hidden = false;
   editor.elements.title.focus();
 }
@@ -164,16 +214,27 @@ login.addEventListener('submit', event => {
     await refresh();
     login.hidden = true;
     dashboard.hidden = false;
+    byId('projectsHeading').focus();
   });
 });
 byId('logout').addEventListener('click', () => {
-  if (busy) return;
+  if (busy || !confirmSwitch()) return;
   signOut();
+  login.elements.token.focus();
   notice.textContent = 'Signed out.';
 });
-byId('refresh').addEventListener('click', () => run(refresh));
-byId('add').addEventListener('click', () => openEditor());
-byId('cancel').addEventListener('click', closeEditor);
+byId('refresh').addEventListener('click', () => {
+  if (busy || !confirmSwitch()) return;
+  closeEditor();
+  run(async () => {
+    await refresh();
+    notice.textContent = 'Dashboard refreshed.';
+  });
+});
+add.addEventListener('click', () => openEditor(null, add, newProject));
+byId('cancel').addEventListener('click', () => {
+  if (!busy) closeEditor(true);
+});
 
 editor.addEventListener('submit', event => {
   event.preventDefault();
@@ -189,11 +250,14 @@ editor.addEventListener('submit', event => {
     if (project.capacity !== null && project.confirmedSpots > project.capacity) {
       throw new Error('Confirmed spots cannot exceed total spots.');
     }
-    project.completed = editing?.completed ?? false;
+    project.completed = fields.has('completed');
     if (editing) Object.assign(project, {id: editing.id, revision: editing.revision});
+    editorNotice.textContent = 'Saving project…';
     await api('projects', editing ? 'PUT' : 'POST', project);
-    closeEditor();
+    const returnTo = editorTrigger.id;
+    closeEditor(true);
     notice.textContent = 'Project saved.';
     await refresh();
-  });
+    byId(returnTo)?.focus();
+  }, editorNotice);
 });
