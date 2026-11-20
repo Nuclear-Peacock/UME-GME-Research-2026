@@ -11,7 +11,7 @@ Learners use the homepage to select open projects and submit their name and emai
 
 ## Track recruitment and project progress
 
-In the faculty dashboard, select **Add project** or **Edit** and find **Recruitment and progress**. Set the total number of spots if the project has a limit, enter the number of students you have confirmed, and set the project completion percentage. Clear **Accept student interest** to pause sign-ups. A project also stops accepting interest when all spots are filled.
+In the faculty dashboard, select **Add research** to create a project or click an existing project card to open its editor in place. Find **Recruitment and progress** within the form. Set the total number of spots if the project has a limit, enter the number of students you have confirmed, and set the project completion percentage. Clear **Accept student interest** to pause sign-ups. A project also stops accepting interest when all spots are filled.
 
 Learners see whether sign-ups are open and how many spots remain when a limit is set. Student interest appears separately from confirmed spots. Checking **Completed** hides the project from learners and preserves its submission history.
 
