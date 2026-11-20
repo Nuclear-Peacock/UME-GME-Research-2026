@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Faculty Dashboard | Research Opportunities</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script type="module" src="/faculty.mjs"></script>
+</head>
+<body>
+  <main class="wrap faculty">
+    <header class="hero">
+      <a href="/">Learner opportunities</a>
+      <h1>Faculty dashboard</h1>
+    </header>
+    <form id="login" class="form" method="post">
+      <label>Faculty access token <input name="token" type="password" autocomplete="current-password" required></label>
+      <button class="btn primary">Sign in</button>
+    </form>
+    <p id="notice" role="status"></p>
+    <div id="dashboard" hidden>
+      <div class="actions">
+        <button class="btn" id="refresh">Refresh dashboard</button>
+        <button class="btn" id="logout">Sign out</button>
+      </div>
+      <section aria-labelledby="projectsHeading">
+        <h2 id="projectsHeading">Projects</h2>
+        <button class="btn primary" id="add">Add project</button>
+        <form id="editor" class="form" method="post" hidden>
+          <h3 id="editorHeading"></h3>
+          <label>Title <input name="title" maxlength="200" required></label>
+          <label>Card summary <textarea name="hook" maxlength="500" required></textarea></label>
+          <label>Status for learners <input name="status" maxlength="200" required></label>
+          <label>Why it matters <textarea name="why" maxlength="3000" required></textarea>
+          <label>What a student could do <textarea name="role" maxlength="3000" required></textarea>
+          <label>Likely output <textarea name="output" maxlength="1500" required></textarea>
+          <label>Timeline <input name="timeline" maxlength="500"></label>
+          <label>Primary pathway <select name="accentKey" required></select></label>
+          <fieldset id="pathways"><legend>Additional pathways</legend></fieldset>
+          <label>Badges, one per line <textarea name="badges" maxlength="1815"></textarea></label>
+          <label>Skills, one per line <textarea name="skills" maxlength="1815"></textarea></label>
+          <div class="actions">
+            <button class="btn primary">Save project</button>
+            <button type="button" class="btn" id="cancel">Cancel</button>
+          </div>
+        </form>
+        <div id="projects"></div>
+      </section>
+      <section aria-labelledby="interestsHeading">
+        <h2 id="interestsHeading">Student interest</h2>
+        <div id="interests"></div>
+      </section>
+    </div>
+  </main>
+</body>
+</html>
