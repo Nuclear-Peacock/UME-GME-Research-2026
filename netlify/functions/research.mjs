@@ -65,6 +65,33 @@ async function listProjects(store) {
   return [...projects.values()].map(project => ({...PROJECT_TRACKING_DEFAULTS, ...project})).sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
 }
 
+const postingDay = new Intl.DateTimeFormat('sv-SE', {
+  timeZone: 'America/Phoenix', year: 'numeric', month: '2-digit', day: '2-digit'
+});
+const topicOrder = new Map(PATHWAYS.map(({key}, index) => [key, index]));
+const stagePathways = new Set(['data-ready', 'ongoing-data']);
+
+function learnerProjects(projects) {
+  return projects.filter(project => !project.completed)
+    .map(project => {
+      const {completed, revision, createdAt, signupOpen, capacity, confirmedSpots, completionPercent, ...publicFields} = project;
+      const timestamp = Date.parse(createdAt);
+      const postedOn = Number.isFinite(timestamp) ? postingDay.format(timestamp) : '';
+      const topicKey = stagePathways.has(project.accentKey)
+        ? project.tags.find(tag => !stagePathways.has(tag)) ?? project.accentKey
+        : project.accentKey;
+      return {...publicFields, ...projectAvailability(project), postedOn, topicKey};
+    })
+    .sort((a, b) => b.postedOn.localeCompare(a.postedOn) ||
+      availableSpotRank(b) - availableSpotRank(a) ||
+      (topicOrder.get(a.topicKey) ?? topicOrder.size) - (topicOrder.get(b.topicKey) ?? topicOrder.size));
+}
+
+function availableSpotRank(project) {
+  if (project.signupStatus !== 'open') return 0;
+  return project.remainingSpots ?? Number.MAX_SAFE_INTEGER + 1;
+}
+
 function normalizeProject(input, current) {
   if (typeof input.completed !== 'boolean' || !pathways.has(input.accentKey)) return null;
   const project = {};
@@ -165,11 +192,7 @@ export default async function handler(request) {
     const store = getStore({name: 'research-portal', consistency: 'strong'});
     if (path === '/api/projects' && method === 'GET') {
       const projects = await listProjects(store);
-      return json(projects.filter(project => !project.completed)
-        .map(project => {
-          const {completed, revision, createdAt, signupOpen, capacity, confirmedSpots, completionPercent, ...publicFields} = project;
-          return {...publicFields, ...projectAvailability(project)};
-        }));
+      return json(learnerProjects(projects));
     }
     if (path === '/api/interests' && method === 'POST') return await submitInterest(request, store);
     if (path === '/api/faculty/projects') {

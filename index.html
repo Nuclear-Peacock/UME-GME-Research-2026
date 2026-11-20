@@ -99,19 +99,28 @@ function escapeHTML(value){
 
 /* RENDER: CARD GRID */
 const gridEl = document.getElementById('grid');
+const postedDate = new Intl.DateTimeFormat('en-US', {dateStyle:'long', timeZone:'UTC'});
 function accentVar(accentKey){
   const p = PATHWAYS.find(p=>p.key===accentKey);
   return p ? `var(${p.accent})` : 'var(--teal)';
 }
 function renderGrid(){
-  gridEl.innerHTML = projects.map((t, i) => {
-    const show = activeFilter==='all' || t.tags.includes(activeFilter);
-    return `
-    <button class="card ${show?'':'hidden'} ${interested.has(t.id)?'interested':''}"
+  let currentDay;
+  const visible = visibleTopics();
+  gridEl.innerHTML = visible.map((t, i) => {
+    const day = t.postedOn || '';
+    const heading = day === currentDay ? '' : `<h2 class="project-date">${day
+      ? 'Posted ' + postedDate.format(new Date(day + 'T00:00:00Z'))
+      : 'Earlier opportunities'}</h2>`;
+    currentDay = day;
+    const topic = PATHWAYS.find(pathway=>pathway.key === (t.topicKey || t.accentKey));
+    return `${heading}
+    <button class="card ${interested.has(t.id)?'interested':''}"
       style="--card-accent:${accentVar(t.accentKey)}; animation-delay:${i*35}ms"
       data-id="${escapeHTML(t.id)}" aria-label="Open opportunity: ${escapeHTML(t.title)}">
       <div class="card-icon">${Object.hasOwn(ICONS, t.icon) ? ICONS[t.icon] : ICONS.casefile}</div>
       <h3>${escapeHTML(t.title)}</h3>
+      ${topic ? `<p class="project-topic">${escapeHTML(topic.label)}</p>` : ''}
       <p class="hook">${escapeHTML(t.hook)}</p>
       <p class="availability">${escapeHTML(availabilityText(t))}</p>
       <div class="badges">
@@ -120,6 +129,7 @@ function renderGrid(){
       </div>
     </button>`;
   }).join('');
+  if(!visible.length && projects.length) gridEl.innerHTML = '<p>No projects in this topic.</p>';
   gridEl.querySelectorAll('.card').forEach(card=>{
     card.addEventListener('click', ()=> openDetail(card.dataset.id));
   });
