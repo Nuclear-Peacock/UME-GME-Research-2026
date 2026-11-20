@@ -31,7 +31,7 @@
 
   <section class="cta">
     <h2>Interested in joining a project?</h2>
-    <p>Mark one or more projects as interested, then submit your selections to faculty.</p>
+    <p>Mark one or more projects as interested, then submit your selections to faculty. Faculty will confirm placements separately.</p>
     <p id="selectedProjects" aria-live="polite"></p>
     <form id="interestForm" class="form" method="post">
       <label>Name <input name="name" autocomplete="name" maxlength="120" required></label>
@@ -50,6 +50,7 @@
 
 <script type="module">
 import { PATHWAYS } from "./data/pathways.mjs";
+import { signupLabel, spotsLabel } from "./data/availability.mjs";
 /* ICON LIBRARY */
 const ICONS = {
   network: `<svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2"><circle cx="24" cy="10" r="4"/><circle cx="10" cy="34" r="4"/><circle cx="38" cy="34" r="4"/><circle cx="24" cy="26" r="4"/><path d="M24 14v8M20.5 28.5L13 32M27.5 28.5L35 32"/></svg>`,
@@ -112,6 +113,7 @@ function renderGrid(){
       <div class="card-icon">${Object.hasOwn(ICONS, t.icon) ? ICONS[t.icon] : ICONS.casefile}</div>
       <h3>${escapeHTML(t.title)}</h3>
       <p class="hook">${escapeHTML(t.hook)}</p>
+      <p class="availability">${escapeHTML(availabilityText(t))}</p>
       <div class="badges">
         <span class="badge status ${t.urgent?'urgent':''} ${t.ongoing?'ongoing':''}">${escapeHTML(t.status)}</span>
         ${t.badges.map(b=>`<span class="badge type">${escapeHTML(b)}</span>`).join('')}
@@ -127,6 +129,15 @@ function renderGrid(){
 const overlay = document.getElementById('overlay');
 const panel = document.getElementById('panel');
 
+function acceptingInterest(project){
+  return !project.signupStatus || project.signupStatus === 'open';
+}
+
+function availabilityText(project){
+  const label = signupLabel(project.signupStatus || 'open');
+  return project.remainingSpots == null ? label : label + ' · ' + spotsLabel(project.remainingSpots);
+}
+
 function panelHTML(t){
   const accent = accentVar(t.accentKey);
   return `
@@ -135,6 +146,7 @@ function panelHTML(t){
       <button class="panel-close" id="closeBtn" aria-label="Close detail panel (Escape)">✕</button>
     </div>
     <h2 id="panelTitle">${escapeHTML(t.title)}</h2>
+    <p class="availability">${escapeHTML(availabilityText(t))}</p>
     <div class="badges">
       <span class="badge status ${t.urgent?'urgent':''} ${t.ongoing?'ongoing':''}">${escapeHTML(t.status)}</span>
       ${t.badges.map(b=>`<span class="badge type">${escapeHTML(b)}</span>`).join('')}
@@ -170,8 +182,8 @@ function panelHTML(t){
     <div class="panel-actions">
       <button class="btn ghost" id="backBtn">← Back to all topics</button>
       <button class="btn ghost" id="nextBtn">Next opportunity →</button>
-      <button class="btn primary ${interested.has(t.id)?'marked':''}" id="interestBtn">
-        ${interested.has(t.id) ? '★ Interested' : 'Mark as interested'}
+      <button class="btn primary ${interested.has(t.id)?'marked':''}" id="interestBtn"${acceptingInterest(t) ? '' : ' disabled'}>
+        ${!acceptingInterest(t) ? 'Interest unavailable' : interested.has(t.id) ? '★ Interested' : 'Mark as interested'}
       </button>
       <a class="btn" id="submitInterestLink" href="#interestForm"${interested.size ? '' : ' hidden'}>Submit selections</a>
     </div>
@@ -250,7 +262,7 @@ async function refreshProjects(){
     const previousDetail = projects.find(project => project.id === currentTopicId);
     projects = next;
     for(const id of interested){
-      if(!projects.some(project => project.id === id)) interested.delete(id);
+      if(!projects.some(project => project.id === id && acceptingInterest(project))) interested.delete(id);
     }
     if(changed){
       const detail = projects.find(project => project.id === currentTopicId);
@@ -282,7 +294,7 @@ form.addEventListener('submit', async event => {
     });
     if(response.status === 409){
       await refreshProjects();
-      throw new Error('A selected project has closed. Review your selections and try again.');
+      throw new Error('A selected project is no longer accepting interest. Review your selections and try again.');
     }
     if(!response.ok) throw new Error('Could not submit your interest. Please try again.');
     for(const id of selection) interested.delete(id);

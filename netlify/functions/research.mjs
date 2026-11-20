@@ -3,6 +3,8 @@ import { getStore } from '@netlify/blobs';
 import { SEED_PROJECTS } from '../../data/projects.mjs';
 import { PATHWAYS } from '../../data/pathways.mjs';
 
+import { PROJECT_TRACKING_DEFAULTS, projectAvailability } from '../../data/availability.mjs';
+
 const textFields = { title: 200, hook: 500, status: 200, why: 3000, role: 3000, output: 1500, timeline: 500 };
 const requiredFields = ['title', 'hook', 'status', 'why', 'role', 'output'];
 const pathways = new Set(PATHWAYS.map(pathway => pathway.key));
@@ -60,7 +62,7 @@ async function records(store, prefix) {
 async function listProjects(store) {
   const projects = new Map(seeds.map(project => [project.id, {...project, revision: null}]));
   for (const project of await records(store, 'project/')) projects.set(project.id, project);
-  return [...projects.values()].sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
+  return [...projects.values()].map(project => ({...PROJECT_TRACKING_DEFAULTS, ...project})).sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
 }
 
 function normalizeProject(input, current) {
@@ -77,8 +79,20 @@ function normalizeProject(input, current) {
       input[field].some(item => typeof item !== 'string' || !item.trim() || item.length > 120)) return null;
     project[field] = input[field].map(item => item.trim());
   }
+  const tracking = {...PROJECT_TRACKING_DEFAULTS};
+  for (const field of Object.keys(tracking)) {
+    if (Object.hasOwn(input, field)) tracking[field] = input[field];
+    else if (current) tracking[field] = current[field];
+  }
+  const {signupOpen, capacity, confirmedSpots, completionPercent} = tracking;
+  if (typeof signupOpen !== 'boolean' ||
+    (capacity !== null && (!Number.isSafeInteger(capacity) || capacity < 0)) ||
+    !Number.isSafeInteger(confirmedSpots) || confirmedSpots < 0 || (capacity !== null && confirmedSpots > capacity) ||
+    !Number.isInteger(completionPercent) || completionPercent < 0 || completionPercent > 100) return null;
+
   return {
     ...project,
+    ...tracking,
     completed: input.completed,
     accentKey: input.accentKey,
     tags: [...new Set([input.accentKey, ...input.tags])],
@@ -128,9 +142,9 @@ async function submitInterest(request, store) {
   const uniqueIds = [...new Set(ids)].sort();
   const key = 'interest/' + hash(JSON.stringify([email.toLowerCase(), uniqueIds])).toString('hex');
   if (await store.getMetadata(key)) return json({ok: true});
-  const projects = new Map((await listProjects(store)).filter(project => !project.completed)
+  const projects = new Map((await listProjects(store)).filter(project => projectAvailability(project).signupStatus === 'open')
     .map(project => [project.id, project.title]));
-  if (uniqueIds.some(id => !projects.has(id))) return json({error: 'A selected project has closed.'}, 409);
+  if (uniqueIds.some(id => !projects.has(id))) return json({error: 'A selected project is no longer accepting interest.'}, 409);
   await store.setJSON(key, {
     name, email,
     projects: uniqueIds.map(id => ({id, title: projects.get(id)})),
@@ -152,7 +166,10 @@ export default async function handler(request) {
     if (path === '/api/projects' && method === 'GET') {
       const projects = await listProjects(store);
       return json(projects.filter(project => !project.completed)
-        .map(({completed, revision, createdAt, ...project}) => project));
+        .map(project => {
+          const {completed, revision, createdAt, signupOpen, capacity, confirmedSpots, completionPercent, ...publicFields} = project;
+          return {...publicFields, ...projectAvailability(project)};
+        }));
     }
     if (path === '/api/interests' && method === 'POST') return await submitInterest(request, store);
     if (path === '/api/faculty/projects') {
